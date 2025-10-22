@@ -18,8 +18,8 @@ def get_bro_data(bro_GLD_id: str) -> pd.DataFrame:
 
 
 def clean_csv(df: pd.DataFrame) -> pd.DataFrame:
-    # remove columns whose name contains "Opmerking" (case-insensitive)
-    mask = df.columns.str.contains(r'Opmerking', case=False, na=False)
+    # remove columns whose name contains "Opmerking" or "Controle" (case-insensitive)
+    mask = df.columns.str.contains(r'Opmerking|Controle', case=False, na=False)
     # remove columns containing NaNs
     df_clean = df.loc[:, ~mask].dropna(axis=1, how='all')
     # remove rows containing NaNs

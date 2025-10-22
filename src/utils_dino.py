@@ -104,13 +104,16 @@ def parse_date_to_unix(timestamps, default_tz='UTC'):
                 unix_times.append(None)
                 continue
             try:
-                if _YFIRST.match(ts) or "T" in ts: # ISO & Y-first
+                if _YFIRST.match(ts) or "T" in ts: # ISO & Year-first
                     dt = pd.to_datetime(ts, utc=True)  
                 else:  # Day-first branch
                     dt = pd.to_datetime(ts, dayfirst=True)
+                
                 if dt.tzinfo is None:
                     dt = dt.tz_localize(default_tz)
+                
                 unix_times.append(dt.timestamp() * 1000)  # seconds since epoch
+            
             except Exception:
                 unix_times.append(None)
     else:
