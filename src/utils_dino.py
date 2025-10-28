@@ -57,7 +57,7 @@ def get_migrated_data_by_bro_id(bro_GLD_id: str, engine=None) -> pd.DataFrame:
         , cte_m_e.Y_RD_CRD as Y
         , GWS_MSM_H.MONITOR_DATE
         , GWS_MSM_H.VALUE
-        ,  (
+        , (
             SELECT gph.MSM_NAP_HEIGHT
             FROM DINO_DBA.GWS_PIE_HISTORY gph
             WHERE gph.PIEZOMETER_DBK = cte_m_e.PIEZOMETER_DBK
@@ -66,19 +66,16 @@ def get_migrated_data_by_bro_id(bro_GLD_id: str, engine=None) -> pd.DataFrame:
                     FROM DINO_DBA.GWS_PIE_HISTORY gph2
                     WHERE gph2.PIEZOMETER_DBK = cte_m_e.PIEZOMETER_DBK AND gph2.START_DATE <= GWS_MSM_H.MONITOR_DATE
             )
-            ) AS MSM_NAP_HEIGHT
+          ) AS MSM_NAP_HEIGHT
         FROM cte_migration_event cte_m_e
         INNER JOIN DINO_DBA.BRO_MIGRATION_RECORD BRO_M_R
             ON cte_m_e.EVENT_DBK = BRO_M_R.EVENT_DBK
         INNER JOIN DINO_DBA.GWS_MSM_HEAD GWS_MSM_H
             ON BRO_M_R.MIGRATED_RECORD_DBK = GWS_MSM_H.MSM_HEAD_DBK
-        INNER JOIN DINO_DBA.GWS_PIE_HISTORY GWS_PH 
-            ON GWS_PH.PIEZOMETER_DBK = cte_m_e.PIEZOMETER_DBK
         WHERE
             BRO_M_R.TABLE_NM_DBK = (SELECT TABLE_NM_DBK FROM DINO_DBA.REF_BRO_MIGRATION_TABLE_NM WHERE TABLE_NM = 'GWS_MSM_HEAD')
             AND BRO_M_R.MIGRATION_STATUS_CD in ('REWORK', 'SUCCESS')
-        ORDER BY
-            GWS_MSM_H.MONITOR_DATE
+        ORDER BY GWS_MSM_H.MONITOR_DATE
     """
     df = pd.read_sql(sql_query, engine)
     if df.empty: 
@@ -145,35 +142,40 @@ def get_DINO_data_by_piezometer(piezometer_dbk, engine=None) -> pd.DataFrame:
     sql = f"""
         SELECT
             w.NITG_NR,
-            l.X_RD_CRD as X,
-            l.Y_RD_CRD as Y,
+            l.X_RD_CRD AS X,
+            l.Y_RD_CRD AS Y,
             p.PIEZOMETER_NR,
             h.MONITOR_DATE,
             h.VALUE,
-            gph.MSM_NAP_HEIGHT
-        FROM
-            DINO_DBA.GWS_MSM_HEAD h
-        INNER JOIN
-            DINO_DBA.GWS_PIEZOMETER p ON h.piezometer_dbk = p.piezometer_dbk
-        INNER JOIN
-            DINO_DBA.GWS_PIE_HISTORY gph ON p.piezometer_dbk = gph.PIEZOMETER_DBK
-        INNER JOIN
-            DINO_DBA.GWS_WELL w ON p.well_dbk = w.well_dbk
-        INNER JOIN
-            DINO_DBA.LOC_SURFACE_LOCATION l ON l.SURFACE_LOCATION_DBK = w.SURFACE_LOCATION_DBK
-        WHERE
-            h.piezometer_dbk  = '{piezometer_dbk}'
+            (   SELECT g.MSM_NAP_HEIGHT
+                FROM DINO_DBA.GWS_PIE_HISTORY g
+                WHERE g.PIEZOMETER_DBK = h.PIEZOMETER_DBK AND g.START_DATE <= h.MONITOR_DATE
+                ORDER BY g.START_DATE DESC
+                FETCH FIRST 1 ROW ONLY
+            ) AS MSM_NAP_HEIGHT
+        FROM DINO_DBA.GWS_MSM_HEAD h
+        INNER JOIN DINO_DBA.GWS_PIEZOMETER p
+        ON h.PIEZOMETER_DBK = p.PIEZOMETER_DBK
+        INNER JOIN DINO_DBA.GWS_WELL w
+        ON p.WELL_DBK = w.WELL_DBK
+        INNER JOIN DINO_DBA.LOC_SURFACE_LOCATION l
+        ON l.SURFACE_LOCATION_DBK = w.SURFACE_LOCATION_DBK
+        WHERE h.PIEZOMETER_DBK  = '{piezometer_dbk}'
     """
     if engine is None:
         engine = init_connection_to_dino()
 
     df = pd.read_sql(sql, engine)
     if df.empty: 
-        raise ValueError(f"No data found for BRO_ID: {bro_id}")
-    df['monitor_date'] = df['monitor_date'].dt.tz_localize('Europe/Amsterdam')
+        raise ValueError(f"No data found for PIEZOMETER_DBK: {piezometer_dbk}")
+    try:
+        df['monitor_date'] = df['monitor_date'].dt.tz_localize('Europe/Amsterdam')
+    except Exception as e:
+        df['monitor_date'] = df['monitor_date'].dt.tz_localize('Europe/Amsterdam', ambiguous=[True]*len(df))
     df['monitor_date'] = parse_date_to_unix(df['monitor_date'])
     # convert values to meters above NAP
     df['value'] = (df['msm_nap_height'] - df['value'])/100
-    # delete msm_nap_height column
-    df = df.drop(columns=['msm_nap_height'])
+    # delete msm_nap_height column and remove rows with NaNs
+    df.drop(columns=['msm_nap_height'], inplace=True)
+    df.dropna(inplace=True)
     return df
