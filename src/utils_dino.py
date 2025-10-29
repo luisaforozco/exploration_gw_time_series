@@ -171,7 +171,7 @@ def get_DINO_data_by_piezometer(piezometer_dbk, engine=None) -> pd.DataFrame:
     try:
         df['monitor_date'] = df['monitor_date'].dt.tz_localize('Europe/Amsterdam')
     except Exception as e:
-        df['monitor_date'] = df['monitor_date'].dt.tz_localize('Europe/Amsterdam', ambiguous=[True]*len(df))
+        df['monitor_date'] = df['monitor_date'].dt.tz_localize('Europe/Amsterdam', ambiguous=[True]*len(df), nonexistent='shift_forward')
     df['monitor_date'] = parse_date_to_unix(df['monitor_date'])
     # convert values to meters above NAP
     df['value'] = (df['msm_nap_height'] - df['value'])/100
