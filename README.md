@@ -21,3 +21,4 @@ conda env create -f env/ts_wsl.yml
 - [methods_exploration](notebooks/methods/methods_exploration.ipynb): Overview of methodologies fro time-series
 - [wavelets](notebooks/methods/wavelets.ipynb): deep-dive into the wavelet method.
 - [DTW_test](notebooks/methods/DTW_test.ipynb): Characterization of test dataset using DTW.
+- [time-series encoder](notebooks/methods/tspulse_test.ipynb): We load a pre-trained model [tspulse](https://huggingface.co/ibm-granite/granite-timeseries-tspulse-r1) index and doing a similarity search.
