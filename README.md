@@ -19,6 +19,7 @@ conda env create -f env/ts_wsl.yml
 - [generate_test_dataset](notebooks/data_exploration/generate_test_dataset.ipynb): routine to generate a ground-truth dataset from migrated records.
 ### _Methods notebooks_ 
 - [methods_exploration](notebooks/methods/methods_exploration.ipynb): Overview of methodologies for time-series
-- [wavelets](notebooks/methods/wavelets.ipynb): deep-dive into the wavelets method.
 - [DTW_test](notebooks/methods/DTW_test.ipynb): Characterization of test dataset using DTW.
 - [time-series encoder](notebooks/methods/tspulse_test.ipynb): We load a pre-trained model [tspulse](https://huggingface.co/ibm-granite/granite-timeseries-tspulse-r1) index and doing a similarity search.
+- [Long-scargle periodogram](notebooks/methods/periodogram.ipynb): Seasonality and peak extraction for generating a compressed fingerprint. 
+- [wavelets](notebooks/methods/wavelets.ipynb): deep-dive into the wavelets method.
