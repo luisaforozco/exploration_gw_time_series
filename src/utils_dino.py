@@ -1,12 +1,14 @@
 import os
 import re
 import pandas as pd
-from sqlalchemy import create_engine
 from dotenv import load_dotenv
+from pathlib import Path
+from sqlalchemy import create_engine
 
 def init_connection_to_dino():
     """Initialize and return a connection to the DINO Oracle database."""
-    load_dotenv("../env/env.sh")
+    PROJECT_ROOT = Path(__file__).resolve().parents[1]
+    load_dotenv(PROJECT_ROOT / "env" / "env.sh")
     USR_DINO = os.getenv("USR_DINO")
     PWD_DINO = os.getenv("PWD_DINO")
     return create_engine(f"oracle+oracledb://{USR_DINO}:{PWD_DINO}@gdnoradb01.gdnnet.lan:1522/?service_name=dinoprd03")
@@ -161,6 +163,7 @@ def get_DINO_data_by_piezometer(piezometer_dbk, engine=None) -> pd.DataFrame:
         INNER JOIN DINO_DBA.LOC_SURFACE_LOCATION l
         ON l.SURFACE_LOCATION_DBK = w.SURFACE_LOCATION_DBK
         WHERE h.PIEZOMETER_DBK  = '{piezometer_dbk}'
+        ORDER BY h.MONITOR_DATE
     """
     if engine is None:
         engine = init_connection_to_dino()
@@ -178,4 +181,5 @@ def get_DINO_data_by_piezometer(piezometer_dbk, engine=None) -> pd.DataFrame:
     # delete msm_nap_height column and remove rows with NaNs
     df.drop(columns=['msm_nap_height'], inplace=True)
     df.dropna(inplace=True)
+    #df.sort_values('monitor_date', inplace=True) # redundant sorting (already in sql query), but leaving it in case we might find time-jumps in the data down the road
     return df
