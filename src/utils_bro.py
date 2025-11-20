@@ -39,7 +39,7 @@ def get_gmw_of_gld(bro_GLD_id: str) -> str:
         raise ValueError(f"Bad request objectsAsCsv for BRO ID {bro_GLD_id}: {description}")
     gmw_matches = re.search(r'\b(GMW[0-9]+)\b', response.text)
     if gmw_matches: return gmw_matches.group(1)
-    else: raise ValueError(f"No GMW_ID found for {bro_GLD_id}")
+    else: raise ValueError(f"No GMW found for {bro_GLD_id}")
     
 
 def get_coordinates_gmw(bro_GMW_id:str) -> tuple:
@@ -64,4 +64,4 @@ def get_coordinates_gmw(bro_GMW_id:str) -> tuple:
     if x is not None and y is not None:
         return x, y
     else:
-        raise ValueError(f"Coordinates not found for GMW ID {bro_GMW_id}")
+        raise ValueError(f"Coordinates not found for well {bro_GMW_id}")
