@@ -82,12 +82,16 @@ def get_migrated_data_by_bro_id(bro_GLD_id: str, engine=None) -> pd.DataFrame:
     df = pd.read_sql(sql_query, engine)
     if df.empty: 
         raise ValueError(f"No data found for BRO_ID: {bro_GLD_id}")
-    df['monitor_date'] = df['monitor_date'].dt.tz_localize('Europe/Amsterdam')
+    try:
+        df['monitor_date'] = df['monitor_date'].dt.tz_localize('Europe/Amsterdam')
+    except Exception as e:
+        df['monitor_date'] = df['monitor_date'].dt.tz_localize('Europe/Amsterdam', ambiguous=[True]*len(df), nonexistent='shift_forward')
     df['monitor_date'] = parse_date_to_unix(df['monitor_date'])
     # convert values to meters above NAP
     df['value'] = (df['msm_nap_height'] - df['value'])/100
-    # delete msm_nap_height column
-    df = df.drop(columns=['msm_nap_height'])
+    # delete msm_nap_height column and remove rows with NaNs
+    df.drop(columns=['msm_nap_height'], inplace=True)
+    df.dropna(inplace=True)
     return df
 
 
@@ -183,3 +187,4 @@ def get_DINO_data_by_piezometer(piezometer_dbk, engine=None) -> pd.DataFrame:
     df.dropna(inplace=True)
     #df.sort_values('monitor_date', inplace=True) # redundant sorting (already in sql query), but leaving it in case we might find time-jumps in the data down the road
     return df
+    
