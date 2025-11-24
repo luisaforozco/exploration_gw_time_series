@@ -21,5 +21,7 @@ conda env create -f env/ts_wsl.yml
 - [methods_exploration](notebooks/methods/methods_exploration.ipynb): Overview of methodologies for time-series
 - [DTW_test](notebooks/methods/DTW_test.ipynb): Characterization of test dataset using DTW.
 - [time-series encoder](notebooks/methods/tspulse_test.ipynb): We load a pre-trained model [tspulse](https://huggingface.co/ibm-granite/granite-timeseries-tspulse-r1) index and doing a similarity search.
-- [Long-scargle periodogram](notebooks/methods/periodogram.ipynb): Seasonality and peak extraction for generating a compressed fingerprint. 
+- [Lomb-scargle periodogram](notebooks/methods/periodogram.ipynb): Calculate Lom-Scargle periodogram for groundwater levels data in order to get familiar with the method and the seasonality in the data. 
 - [wavelets](notebooks/methods/wavelets.ipynb): deep-dive into the wavelets method.
+### _Application_
+- [Lomb-scargle periodogram](notebooks/methods/periodogram_fingerprint.ipynb):Extract features from Lomb-Scargle periodogram, create fingerprints, train a NearesNeighbours model and perfom searches on various datasets.
