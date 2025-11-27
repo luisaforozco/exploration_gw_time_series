@@ -20,9 +20,7 @@ EPS = 1e-12
 def _prepare(times_ms, values):
     times_ms = np.asarray(times_ms).astype(float)
     vals = np.asarray(values).astype(float)
-    order = np.argsort(times_ms)
-    times_ms = times_ms[order]
-    vals = vals[order]
+    vals = np.asarray(vals) - np.nanmean(vals)
     # drop nan pairs
     mask = ~np.isnan(times_ms) & ~np.isnan(vals)
     return times_ms[mask], vals[mask]
@@ -135,7 +133,7 @@ def _seasonal_lombscargle(times_days, vals, require_points=8):
     ratio = seasonal_power / total_power
     return float(seasonal_power), float(ratio)
 
-def compute_fingerprint(times_ms, values, params=None):
+def compute_fingerprint_v0(times_ms, values, params=None):
     """
     Returns a dict with vector, features, flags, params.
     params is optional dict controlling:
@@ -287,6 +285,147 @@ def compute_fingerprint(times_ms, values, params=None):
         # rebuild vector with truncated wavelet info
         vec = wp + [mean_v, std_v, skew_v, kurt_v] + qs + [features['start_year'], features['end_year'], span_days, n_points, median_dt, pct_gaps] + [seasonal_abs, seasonal_ratio] + [int(flags['too_short']), int(flags['lots_of_gaps']), int(flags['is_roughly_constant'])]
         vector = np.asarray(vec, dtype=float)
+
+    out = {
+        'vector': vector,
+        'features': features,
+        'flags': flags,
+        'params': {
+            'N_resample': N,
+            'wavelet': wavelet,
+            'max_wavelet_level': max_level,
+            'nan_frac_threshold': nan_frac_threshold,
+            'min_points_for_wavelet': min_points_for_wavelet
+        }
+    }
+    return out
+
+def compute_fingerprint(data, meta, params=None):
+    """
+    Returns a dict with vector, features, flags, params.
+    params is optional dict controlling:
+      - N_resample (default 512)
+      - wavelet ('db4')
+      - max_wavelet_level (default 6)
+      - nan_frac_threshold (default 0.30)
+      - min_points_for_wavelet (default 10)
+
+    Example:
+        t = sample[:,0]; v = sample[:,1]
+        res = compute_fingerprint(t, v)
+        print("fingerprint length:", res['vector'].size)
+        print("vector:", res['vector'])
+        print("flags:", res['flags'])
+        print("features keys:", res['features'].keys())
+    """
+    if params is None:
+        params = {}
+    N = int(params.get('N_resample', 512))
+    wavelet = params.get('wavelet', 'db4')
+    max_level = int(params.get('max_wavelet_level', 6))
+    nan_frac_threshold = float(params.get('nan_frac_threshold', 0.30))
+    min_points_for_wavelet = int(params.get('min_points_for_wavelet', 10))
+
+    times_ms, vals = data[:,0], data[:,1]
+    times_ms, vals = _prepare(times_ms, vals)
+    features = {}
+    flags = {'too_short': False, 'lots_of_gaps': False, 'is_roughly_constant': False}
+    if len(times_ms) == 0:
+        raise ValueError("Empty series after removing NaNs")
+
+    # convert to days
+    times_days = _times_ms_to_days(times_ms)
+    n_points = len(times_days)
+    dt_days = np.diff(times_days) if n_points > 1 else np.array([0.0])
+    median_dt = float(np.median(dt_days)) if len(dt_days) > 0 else 0.0
+    min_dt = float(np.min(dt_days)) if len(dt_days) > 0 else 0.0
+    max_dt = float(np.max(dt_days)) if len(dt_days) > 0 else 0.0
+    pct_gaps = float(np.mean(dt_days > 2.0 * max(median_dt, 1e-9))) if len(dt_days)>0 else 0.0
+
+    # meta features
+    start_year = int(np.floor((times_days[0] / 365.25) + 1970))  # days since epoch -> crude year
+    end_year = int(np.floor((times_days[-1] / 365.25) + 1970))
+    span_days = float(times_days[-1] - times_days[0])
+
+    features.update({
+        'n_points': int(n_points),
+        'start_year': start_year,
+        'end_year': end_year,
+        'span_days': span_days,
+        'median_dt_days': median_dt,
+        'min_dt_days': min_dt,
+        'max_dt_days': max_dt,
+        'pct_large_gaps': pct_gaps
+    })
+
+    if n_points < min_points_for_wavelet: flags['too_short'] = True
+    
+    # detect near-constant series
+    if np.nanstd(vals) < 1e-6: flags['is_roughly_constant'] = True
+
+    gap_thresh = _gap_threshold_days(median_dt)
+
+    # resample gap-aware
+    target_times, resampled = _gap_aware_resample(times_days, vals, N, gap_thresh)
+    nan_frac = float(np.mean(np.isnan(resampled)))
+    features['nan_frac_after_resample'] = nan_frac
+
+    wavelet_rel_energy = np.zeros(max_level + 1)
+    wavelet_meanabs = np.zeros(max_level + 1)
+    wavelet_maxpos = np.zeros(max_level + 1)
+    used_level = 0
+
+    if nan_frac <= nan_frac_threshold and not flags['too_short']:
+        # safe to fill small NaNs and run wavelet on full resampled signal
+        filled = _fill_small_nans(resampled)
+        # detrend small linear trend before wavelet (helps)
+        detrended = filled - np.polyval(np.polyfit(np.arange(len(filled)), filled, 1), np.arange(len(filled)))
+        re, ma, mp, used_level = _wavelet_summary(detrended, wavelet_name=wavelet, max_level=max_level)
+        wavelet_rel_energy[:len(re)] = re
+        wavelet_meanabs[:len(ma)] = ma
+        wavelet_maxpos[:len(mp)] = mp
+    else:
+        flags['lots_of_gaps'] = True # lots of gaps: fallback to longest contiguous original segment
+        seg_t, seg_v = _longest_contiguous_segment(times_days, vals, gap_thresh)
+        if len(seg_t) >= min_points_for_wavelet:
+            # resample this segment uniformly
+            seg_target = np.linspace(seg_t[0], seg_t[-1], N)
+            seg_resampled = np.interp(seg_target, seg_t, seg_v)
+            detrended = seg_resampled - np.polyval(np.polyfit(np.arange(len(seg_resampled)), seg_resampled, 1), np.arange(len(seg_resampled)))
+            re, ma, mp, used_level = _wavelet_summary(detrended, wavelet_name=wavelet, max_level=max_level)
+            wavelet_rel_energy[:len(re)] = re
+            wavelet_meanabs[:len(ma)] = ma
+            wavelet_maxpos[:len(mp)] = mp
+        else:
+            flags['too_short'] = True # cannot compute wavelet reliably, leave wavelet arrays as zeros
+
+    # global statistics (on original values)
+    mean_v = float(np.nanmean(vals))
+    features.update({
+        'mean': mean_v,
+        'used_wavelet_levels': int(used_level)
+    })
+
+    # seasonality from original time series (Lomb-Scargle)
+    seasonal_abs, seasonal_ratio = _seasonal_lombscargle(times_days, vals, require_points=8)
+    features['seasonal_power_abs'] = seasonal_abs
+    features['seasonal_power_ratio'] = seasonal_ratio
+
+    # assemble fingerprint vector (concise, deterministic order)
+    vec_parts = meta
+    # wavelet: for levels 0..used_level -> rel_energy, meanabs, maxpos
+    for i in range(max_level + 1): # pad with zero's if used_level < max_level
+        vec_parts.append(wavelet_rel_energy[i])
+        vec_parts.append(wavelet_meanabs[i])
+        vec_parts.append(wavelet_maxpos[i])
+    
+    # add global stats
+    vec_parts.extend([mean_v])
+    # time/meta numeric (normalize start/end years to small numbers)
+    vec_parts.extend([features['start_year'], features['end_year'], span_days, n_points, median_dt, pct_gaps])
+    # seasonality
+    vec_parts.extend([seasonal_abs, seasonal_ratio])
+    vector = np.asarray(vec_parts, dtype=float)
 
     out = {
         'vector': vector,
