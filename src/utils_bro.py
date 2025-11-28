@@ -65,3 +65,23 @@ def get_coordinates_gmw(bro_GMW_id:str) -> tuple:
         return x, y
     else:
         raise ValueError(f"Coordinates not found for well {bro_GMW_id}")
+
+
+def get_depths_tubes(bro_GMW_id: str) -> dict:
+    response = requests.get(f"https://publiek.broservices.nl/gm/gmw/v1/objects/{bro_GMW_id}?fullHistory=", headers= {"accept": "application/xml"})
+    xml = response.text
+    root = ET.fromstring(xml)
+    ns = {
+        "gml": "http://www.opengis.net/gml/3.2",
+        "gmwcommon": "http://www.broservices.nl/xsd/gmwcommon/1.1",
+        "brocom": "http://www.broservices.nl/xsd/brocommon/3.0",
+        "dsgmw": "http://www.broservices.nl/xsd/dsgmw/1.1",
+    }
+    tubes = {}
+    for tube in root.findall(".//dsgmw:monitoringTube", ns):
+        number_elt = tube.find("dsgmw:tubeNumber", ns)
+        top_elt = tube.find("dsgmw:screen/dsgmw:screenTopPosition", ns)
+        if number_elt is None or top_elt is None:
+            continue
+        tubes[int(number_elt.text)] = float(top_elt.text)
+    return tubes
